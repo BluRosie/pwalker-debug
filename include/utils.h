@@ -12,3 +12,4 @@ void string_to_img(void *dst, const u8 width, const char *str, bool centered);
 void string_upper(char *dst, const char *src);
 int msleep(const int msec);
 void progress_bar(int current, int total, int width);
+void hex_dump(const char *label, const void *data, u16 size);

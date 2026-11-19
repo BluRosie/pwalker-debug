@@ -58,30 +58,59 @@ void create_poke_packet(poke_packet *out, u8 opcode, u8 extra, const u8 *payload
 
 void send_pokepacket(poke_packet *pkt)
 {
+	u16 total_size = sizeof(packet_header) + pkt->payload_size;
+
+	printf("\n>>> SENDING PACKET <<<\n");
+	printf("Opcode: 0x%02X, Extra: 0x%02X, Checksum: 0x%04X, Session: 0x%08X\n",
+	       pkt->header.opcode, pkt->header.extra, pkt->header.checksum, pkt->header.session_id);
+	hex_dump("Payload (before XOR)", pkt->payload, pkt->payload_size);
+
 	pkt->header.checksum = swap16(pkt->header.checksum);
-	xor_data(pkt, sizeof(packet_header) + pkt->payload_size);
-	ir_send_data(pkt, sizeof(packet_header) + pkt->payload_size);
+	hex_dump("Full packet (before XOR)", pkt, total_size);
+
+	xor_data(pkt, total_size);
+	hex_dump("Full packet (after XOR - wire format)", pkt, total_size);
+
+	ir_send_data(pkt, total_size);
 }
 
 bool recv_pokepacket(poke_packet *pkt)
 {
-	u16 checksum;
+	u16 checksum, computed_checksum;
 	u32 tc;
 
 	tc = ir_recv_data(pkt, MAX_PACKET_SIZE);
-	if (tc < sizeof(packet_header))
+	printf("\n<<< RECEIVED PACKET <<<\n");
+	printf("Raw bytes received: %u\n", tc);
+
+	if (tc < sizeof(packet_header)) {
+		printf("ERROR: Packet too small (need at least %u bytes)\n", sizeof(packet_header));
 		return false;
+	}
+
+	hex_dump("Raw received data (XOR encrypted)", pkt, tc);
 	pkt->payload_size = tc - sizeof(packet_header);
 
 	// XOR data
 	xor_data(pkt, tc);
+	hex_dump("After XOR decryption", pkt, tc);
 
 	// Validate checksum
 	checksum = pkt->header.checksum;
 	pkt->header.checksum = 0;
-	if (swap16(checksum) != compute_checksum(pkt))
+	computed_checksum = compute_checksum(pkt);
+
+	printf("Opcode: 0x%02X, Extra: 0x%02X, Checksum: 0x%04X (computed: 0x%04X), Session: 0x%08X\n",
+	       pkt->header.opcode, pkt->header.extra, swap16(checksum), computed_checksum, pkt->header.session_id);
+
+	if (swap16(checksum) != computed_checksum) {
+		printf("ERROR: Checksum mismatch!\n");
 		return false;
+	}
 	pkt->header.checksum = checksum;
+
+	hex_dump("Payload (decrypted)", pkt->payload, pkt->payload_size);
+	printf("SUCCESS: Valid packet received\n");
 
 	return true;
 }
@@ -91,8 +120,16 @@ bool wait_adv()
 	u8 adv = 0;
 
 	ir_recv_data(&adv, 1);
+	printf("\n<<< ADVERTISEMENT BYTE <<<\n");
+	printf("Received: 0x%02X (expected 0x56)\n", adv);
 
-	return adv == 0x56;
+	if (adv == 0x56) {
+		printf("SUCCESS: Valid advertisement received\n");
+		return true;
+	} else {
+		printf("ERROR: Invalid advertisement byte\n");
+		return false;
+	}
 }
 
 bool poke_init_session(void)
@@ -102,12 +139,17 @@ bool poke_init_session(void)
 	//inited_session_id = rand();
 	inited_session_id = 0;
 
+	printf("\n========================================\n");
+	printf("STARTING SESSION HANDSHAKE\n");
+	printf("========================================\n");
 	printf("Open the Comms app on the Pokewalker\n");
 	printf("Waiting for PokeWalker...\n");
 	if (!wait_adv()) {
 		printf("No PokeWalker found\n");
 		return false;
 	}
+
+	printf("\nInitial session ID (master): 0x%08X\n", inited_session_id);
 
 	// Send SYN packet
 	create_poke_packet(&pkt_syn, CMD_SYN, MASTER_EXTRA, NULL, 0);
@@ -119,9 +161,16 @@ bool poke_init_session(void)
 		return false;
 	}
 
+	printf("Pokewalker session ID (slave): 0x%08X\n", pkt_synack.header.session_id);
+
 	// Compute session id
 	//inited_session_id = swap32(inited_session_id) ^ pkt_synack.header.session_id;
 	inited_session_id = inited_session_id ^ pkt_synack.header.session_id;
+
+	printf("Negotiated session ID: 0x%08X\n", inited_session_id);
+	printf("========================================\n");
+	printf("SESSION ESTABLISHED\n");
+	printf("========================================\n\n");
 
 	return true;
 }

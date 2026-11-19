@@ -146,3 +146,18 @@ void progress_bar(int current, int total, int width)
 	if (current < total)
 		printf("\033[1A");
 }
+
+void hex_dump(const char *label, const void *data, u16 size)
+{
+	const u8 *bytes = (const u8 *)data;
+
+	printf("\n=== %s (%u bytes) ===\n", label, size);
+	for (u16 i = 0; i < size; i++) {
+		if (i % 16 == 0)
+			printf("%04X: ", i);
+		printf("%02X ", bytes[i]);
+		if ((i + 1) % 16 == 0 || i == size - 1)
+			printf("\n");
+	}
+	printf("\n");
+}
