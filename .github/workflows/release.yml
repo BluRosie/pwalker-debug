@@ -2,8 +2,8 @@ name: Release
 
 on:
   push:
-    tags:
-      - '*'
+    branches: [master]
+  workflow_dispatch:
 
 jobs:
   build:
@@ -19,7 +19,7 @@ jobs:
       run: |
         make
         mkdir -p ~/artifacts
-        cp pwalkerHax.3dsx ~/artifacts
+        cp pwalker-debug.3dsx ~/artifacts
     - name: Upload artifact
       uses: actions/upload-artifact@v4
       with:
@@ -39,5 +39,5 @@ jobs:
       - name: Create Release
         uses: softprops/action-gh-release@v2
         with:
-          name: "pwalkerHax ${{ github.ref_name }}"
+          name: "pwalker-debug ${{ github.ref_name }}"
           files: artifacts/*
